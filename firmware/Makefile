@@ -17,7 +17,8 @@ TARGET = enlightChildLed
 
 ifeq ($(wildcard toolchain_conf.mk),)
 $(shell echo "TOOLCHAIN_DIR := " > toolchain_conf.mk)
-$(error Please make the _DIRectives in toolchain_conf.mk point to your toolchain root path and rerun make.)
+$(shell echo "OPENOCD_DIR := " >> toolchain_conf.mk)
+$(error Please make the _DIRectives in toolchain_conf.mk point to your toolchain / openocd root path and rerun make.)
 endif
 include toolchain_conf.mk
 
@@ -210,6 +211,14 @@ $(BUILD_DIR):
 #######################################
 clean:
 	-rm -fR .dep $(BUILD_DIR)
+
+#######################################
+# Flash
+#######################################
+flash_openocd:
+	@echo "Flashing target via OpenOCD."
+	$(OPENOCD_DIR)/src/flashSingleStLinkOpenOCD.sh ./$(BUILD_DIR)/$(TARGET).bin
+	@echo ' '
 
 #######################################
 # dependencies
