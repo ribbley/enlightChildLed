@@ -15,6 +15,13 @@
 ######################################
 TARGET = enlightChildLed
 
+ifeq ($(wildcard toolchain_conf.mk),)
+$(shell echo "TOOLCHAIN_DIR := " > toolchain_conf.mk)
+$(error Please make the _DIRectives in toolchain_conf.mk point to your toolchain root path and rerun make.)
+endif
+include toolchain_conf.mk
+
+
 
 ######################################
 # building variables
@@ -90,7 +97,7 @@ PERIFLIB_SOURCES =
 #######################################
 # binaries
 #######################################
-BINPATH = /usr/bin
+BINPATH = $(TOOLCHAIN_DIR)/bin
 PREFIX = arm-none-eabi-
 CC = $(BINPATH)/$(PREFIX)gcc
 AS = $(BINPATH)/$(PREFIX)gcc -x assembler-with-cpp

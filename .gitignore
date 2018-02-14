@@ -1,3 +1,4 @@
+/firmware/toolchain_conf.mk
 /firmware/build
 *.o
 *.d
