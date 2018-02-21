@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Project>
-<ProjectName>/home/ribbley/projects/enlightChildLed/cpp/enlightChildLed/\enlightChildLed</ProjectName>
+<ProjectName>/home/ribbley/projects/enlightChildLed/firmware/enlightChildLed/\enlightChildLed</ProjectName>
 <CMSIS>Drivers/CMSIS</CMSIS>
 <HAL_Driver>/home/ribbley/STM32Cube/Repository//STM32Cube_FW_F0_V1.9.0/Drivers/CMSIS</HAL_Driver>
 
@@ -23,7 +23,7 @@
 <configs>
   <config>
     <name>enlightChildLed</name>				
-    <device>STM32F031F6Px</device>		 
+    <device>STM32F030F4Px</device>		 
     <heapSize>0x200</heapSize>
     <stackSize>0x400</stackSize>
     

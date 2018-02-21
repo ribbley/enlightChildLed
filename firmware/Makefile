@@ -86,7 +86,7 @@ Src/stm32f0xx_hal_msp.c
 
 # ASM sources
 ASM_SOURCES =  \
-startup_stm32f031x6.s
+startup_stm32f030x6.s
 
 
 ######################################
@@ -163,7 +163,7 @@ CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@:%.o=%.d)"
 # LDFLAGS
 #######################################
 # link script
-LDSCRIPT = STM32F031F6Px_FLASH.ld
+LDSCRIPT = STM32F030F4Px_FLASH.ld
 
 # libraries
 LIBS = -lc -lm -lnosys
