@@ -42,6 +42,9 @@
 
 /* Includes ------------------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#ifndef STM32F030x6
+#define STM32F030x6
+#endif
 
 /* USER CODE END Includes */
 

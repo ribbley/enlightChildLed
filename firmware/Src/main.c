@@ -61,6 +61,7 @@ static void MX_ADC_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
+void checkButtons();
 
 /* USER CODE END PFP */
 
@@ -102,8 +103,15 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  static unsigned long long millis = 0;
+
   while (1)
   {
+	  HAL_Delay(1);
+	  millis++;
+
+	  checkButtons();
+
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
@@ -123,10 +131,11 @@ void SystemClock_Config(void)
 
     /**Initializes the CPU, AHB and APB busses clocks 
     */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = 16;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL6;
   RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -142,7 +151,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -273,6 +282,19 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void checkButtons(){
+	uint8_t buttons = 0;
+	if (HAL_GPIO_ReadPin(BUT1_IN_GPIO_Port, BUT1_IN_Pin == GPIO_PIN_RESET)){
+		buttons |= 0x01;
+	}
+	if (HAL_GPIO_ReadPin(BUT2_IN_GPIO_Port, BUT2_IN_Pin) == GPIO_PIN_RESET){
+		buttons |= 0x02;
+	}
+	if (HAL_GPIO_ReadPin(BUT3_IN_GPIO_Port, BUT3_IN_Pin) == GPIO_PIN_RESET){
+		buttons |= 0x04;
+	}
+}
 
 /* USER CODE END 4 */
 
