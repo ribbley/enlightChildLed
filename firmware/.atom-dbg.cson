@@ -1,0 +1,5 @@
+"build/enlightChildLed.elf":
+	path: "build/enlightChildLed.elf"
+	gdb_executable: "/home/ribbley/tools/gcc-arm-none-eabi-5_4-2016q3/bin/arm-none-eabi-gdb"
+	gdb_commands: ['target remote localhost:3333', 'monitor halt reset',
+	'file build/enlightChildLed.elf', 'load', 'monitor sleep 100', 'monitor reset halt', 'info frame']
