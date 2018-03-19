@@ -1,3 +1,4 @@
+/firmware/Src/*.tmp
 /firmware/toolchain_conf.mk
 /firmware/build
 *.o
