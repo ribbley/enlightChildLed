@@ -39,6 +39,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f0xx_hal.h"
+#include <string.h>
 
 /* USER CODE BEGIN Includes */
 
@@ -50,8 +51,16 @@ DMA_HandleTypeDef hdma_adc;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-uint8_t grb_array_size = 4;
-uint32_t grb_array[] = {0x00080808, 0x00080000, 0x00000800, 0x00000008};
+uint8_t grb_array_size = 5;
+uint8_t max_power = 0x08;
+
+struct PIXEL {
+  uint8_t green;
+  uint8_t red;
+  uint8_t blue;
+};
+
+struct PIXEL grb_array[25];
 
 /* USER CODE END PV */
 
@@ -66,6 +75,10 @@ static void MX_ADC_Init(void);
 extern void wait_us(uint32_t);
 void checkButtons();
 void updateColors();
+void setPixel(uint8_t x, uint8_t y, uint8_t green, uint8_t red, uint8_t blue);
+void setColumn(uint8_t column, uint8_t green, uint8_t red, uint8_t blue);
+void setRow(uint8_t row, uint8_t green, uint8_t red, uint8_t blue);
+void setAll(uint8_t green, uint8_t red, uint8_t blue);
 
 void transmit_zero();
 void transmit_one();
@@ -112,17 +125,14 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   uint32_t times = 0;
+  memset(&grb_array, 0, sizeof(struct PIXEL) * 25);
+  setAll(max_power, max_power, max_power);
+  //setRow(2, 0, 0, max_power);
 
   while (1)
   {
-    static uint32_t lastUpdate = 0;
-
-    if (HAL_GetTick() >= lastUpdate + 1){
-	    lastUpdate = HAL_GetTick();
-
-      updateColors();
-      times++;
-    }
+    transmit_zero();
+    times++;
 
   /* USER CODE END WHILE */
 
@@ -254,7 +264,7 @@ static void MX_DMA_Init(void)
   /* DMA interrupt init */
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  //FIXME HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
 
 }
 
@@ -287,7 +297,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : SER_OUT_INVERTED_Pin */
   GPIO_InitStruct.Pin = SER_OUT_INVERTED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(SER_OUT_INVERTED_GPIO_Port, &GPIO_InitStruct);
 
@@ -295,11 +305,43 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void setPixel(uint8_t x, uint8_t y, uint8_t green, uint8_t red, uint8_t blue){
+  grb_array[x + (5 * y)].green = green;
+  grb_array[x + (5 * y)].red = red;
+  grb_array[x + (5 * y)].blue = blue;
+}
+
+void setColumn(uint8_t column, uint8_t green, uint8_t red, uint8_t blue){
+  setPixel(column, 0, green, red, blue);
+  setPixel(column, 1, green, red, blue);
+  setPixel(column, 2, green, red, blue);
+  setPixel(column, 3, green, red, blue);
+  setPixel(column, 4, green, red, blue);
+}
+
+void setRow(uint8_t row, uint8_t green, uint8_t red, uint8_t blue){
+  setPixel(0, row, green, red, blue);
+  setPixel(1, row, green, red, blue);
+  setPixel(2, row, green, red, blue);
+  setPixel(3, row, green, red, blue);
+  setPixel(4, row, green, red, blue);
+}
+
+void setAll(uint8_t green, uint8_t red, uint8_t blue){
+  setRow(0, green, red, blue);
+  setRow(1, green, red, blue);
+  setRow(2, green, red, blue);
+  setRow(3, green, red, blue);
+  setRow(4, green, red, blue);
+}
+
 void updateColors(){
-  HAL_GPIO_WritePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin, GPIO_PIN_SET);
+  transmit_reset();
+
   for (uint8_t j = 0; j < grb_array_size; j++){
     for (uint8_t i  = 24; i > 0 ; i--){
-      (grb_array[j] & (1 << (i-1)))?transmit_one():transmit_zero();
+      uint32_t tmp = (grb_array[j].green << 16) | (grb_array[j].red << 8) | grb_array[j].blue;
+      (tmp & (1 << (i-1)))?transmit_one():transmit_zero();
     }
   }
   transmit_reset();
@@ -321,7 +363,8 @@ void transmit_one(){
 }
 void transmit_reset(){
   HAL_GPIO_WritePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin, GPIO_PIN_SET);
-  wait_us(520);
+  wait_us(600);//min 519
+  HAL_GPIO_WritePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin, GPIO_PIN_RESET);
 }
 
 void checkButtons(){
