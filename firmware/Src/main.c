@@ -39,9 +39,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f0xx_hal.h"
-#include <string.h>
 
 /* USER CODE BEGIN Includes */
+#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -51,7 +51,7 @@ DMA_HandleTypeDef hdma_adc;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-uint8_t grb_array_size = 5;
+uint8_t grb_array_size = 1;
 uint8_t max_power = 0x08;
 
 struct PIXEL {
@@ -72,7 +72,12 @@ static void MX_ADC_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
-extern void wait_us(uint32_t);
+extern void wait_0h();
+extern void wait_0l();
+extern void wait_1h();
+extern void wait_1l();
+extern void wait_reset();
+
 void checkButtons();
 void updateColors();
 void setPixel(uint8_t x, uint8_t y, uint8_t green, uint8_t red, uint8_t blue);
@@ -126,13 +131,13 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   uint32_t times = 0;
   memset(&grb_array, 0, sizeof(struct PIXEL) * 25);
-  setAll(max_power, max_power, max_power);
+
   //setRow(2, 0, 0, max_power);
 
   while (1)
   {
     transmit_zero();
-    times++;
+    transmit_zero();
 
   /* USER CODE END WHILE */
 
@@ -264,7 +269,7 @@ static void MX_DMA_Init(void)
   /* DMA interrupt init */
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
-  //FIXME HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
 
 }
 
@@ -348,23 +353,31 @@ void updateColors(){
   HAL_Delay(1);
 }
 
+/*
+ * SER_OUT_INVERTED_GPIO_Port->BSRR = (uint32_t)SER_OUT_INVERTED_Pin;
+ * SER_OUT_INVERTED_GPIO_Port->BRR = (uint32_t)SER_OUT_INVERTED_Pin;
+ */
+
+#define __SER_OUT_SET SER_OUT_INVERTED_GPIO_Port->BSRR = (uint32_t)SER_OUT_INVERTED_Pin
+#define __SER_OUT_RESET SER_OUT_INVERTED_GPIO_Port->BRR = (uint32_t)SER_OUT_INVERTED_Pin
+
 void transmit_zero(){
-  HAL_GPIO_WritePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin, GPIO_PIN_RESET);
-  wait_us(4);
-  HAL_GPIO_WritePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin, GPIO_PIN_SET);
-  wait_us(9);
+  __SER_OUT_RESET;
+  wait_0h();
+  __SER_OUT_SET;
+  wait_0l();
 }
 
 void transmit_one(){
-  HAL_GPIO_WritePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin, GPIO_PIN_RESET);
-  wait_us(8);
-  HAL_GPIO_WritePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin, GPIO_PIN_SET);
-  wait_us(5);
+  __SER_OUT_RESET;
+  wait_1h();
+  __SER_OUT_SET;
+  wait_1l();
 }
 void transmit_reset(){
-  HAL_GPIO_WritePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin, GPIO_PIN_SET);
-  wait_us(600);//min 519
-  HAL_GPIO_WritePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin, GPIO_PIN_RESET);
+  __SER_OUT_SET;
+  wait_reset();
+  __SER_OUT_RESET;
 }
 
 void checkButtons(){
