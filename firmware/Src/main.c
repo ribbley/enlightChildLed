@@ -41,6 +41,8 @@
 #include "stm32f0xx_hal.h"
 
 /* USER CODE BEGIN Includes */
+#define USE_FULL_LL_DRIVER
+#include "stm32f0xx_ll_dma.h"
 #include <string.h>
 
 /* USER CODE END Includes */
@@ -49,18 +51,27 @@
 ADC_HandleTypeDef hadc;
 DMA_HandleTypeDef hdma_adc;
 
+TIM_HandleTypeDef htim3;
+
 /* USER CODE BEGIN PV */
+//DMA handler
+LL_DMA_InitTypeDef dma_set_pins;
+LL_DMA_InitTypeDef dma_reset_pins;
+LL_DMA_InitTypeDef dma_set_memory;
+
 /* Private variables ---------------------------------------------------------*/
 uint8_t grb_array_size = 1;
 uint8_t max_power = 0x08;
+uint16_t gpio_port_high = 0xFFFF;
+uint16_t gpio_port_low = 0x0000;
 
 struct PIXEL {
-  uint8_t green;
-  uint8_t red;
-  uint8_t blue;
+  uint8_t green[8];
+  uint8_t red[8];
+  uint8_t blue[8];
 };
 
-struct PIXEL grb_array[25];
+struct PIXEL grb_array[25]; //600 Byte RAM
 
 /* USER CODE END PV */
 
@@ -69,14 +80,11 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_ADC_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_LL_DMA_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
-extern void wait_0h();
-extern void wait_0l();
-extern void wait_1h();
-extern void wait_1l();
-extern void wait_reset();
 
 void checkButtons();
 void updateColors();
@@ -122,6 +130,8 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_ADC_Init();
+  MX_TIM3_Init();
+  MX_LL_DMA_Init();
 
   /* USER CODE BEGIN 2 */
 
@@ -130,19 +140,23 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   uint32_t times = 0;
+  uint32_t last_update = 0;
   memset(&grb_array, 0, sizeof(struct PIXEL) * 25);
 
   //setRow(2, 0, 0, max_power);
 
   while (1)
   {
-    transmit_zero();
-    transmit_zero();
+
 
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
 
+    if(HAL_GetTick() > last_update + 1){
+      last_update = HAL_GetTick();
+      times++;
+    }
   }
   /* USER CODE END 3 */
 
@@ -258,6 +272,48 @@ static void MX_ADC_Init(void)
 
 }
 
+/* TIM3 init function */
+static void MX_TIM3_Init(void)
+{
+
+  TIM_MasterConfigTypeDef sMasterConfig;
+  TIM_OC_InitTypeDef sConfigOC;
+
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 60;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_OC_Init(&htim3) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.Pulse = 17;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sConfigOC.Pulse = 35;
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
 /**
   * Enable DMA controller clock
   */
@@ -302,7 +358,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : SER_OUT_INVERTED_Pin */
   GPIO_InitStruct.Pin = SER_OUT_INVERTED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(SER_OUT_INVERTED_GPIO_Port, &GPIO_InitStruct);
 
@@ -311,9 +367,15 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 void setPixel(uint8_t x, uint8_t y, uint8_t green, uint8_t red, uint8_t blue){
-  grb_array[x + (5 * y)].green = green;
-  grb_array[x + (5 * y)].red = red;
-  grb_array[x + (5 * y)].blue = blue;
+  for (uint8_t i = 0; i < 8; i++){
+    grb_array[x + (5 * y)].green[i] = (green & (0x80 >> i))?gpio_port_high:gpio_port_low;
+  }
+  for (uint8_t i = 0; i < 8; i++){
+    grb_array[x + (5 * y)].red[i] = (red & (0x80 >> i))?gpio_port_high:gpio_port_low;
+  }
+  for (uint8_t i = 0; i < 8; i++){
+    grb_array[x + (5 * y)].blue[i] = (blue & (0x80 >> i))?gpio_port_high:gpio_port_low;
+  }
 }
 
 void setColumn(uint8_t column, uint8_t green, uint8_t red, uint8_t blue){
@@ -341,16 +403,7 @@ void setAll(uint8_t green, uint8_t red, uint8_t blue){
 }
 
 void updateColors(){
-  transmit_reset();
-
-  for (uint8_t j = 0; j < grb_array_size; j++){
-    for (uint8_t i  = 24; i > 0 ; i--){
-      uint32_t tmp = (grb_array[j].green << 16) | (grb_array[j].red << 8) | grb_array[j].blue;
-      (tmp & (1 << (i-1)))?transmit_one():transmit_zero();
-    }
-  }
-  transmit_reset();
-  HAL_Delay(1);
+  //TODO how to trigger color updatE?
 }
 
 /*
@@ -360,25 +413,6 @@ void updateColors(){
 
 #define __SER_OUT_SET SER_OUT_INVERTED_GPIO_Port->BSRR = (uint32_t)SER_OUT_INVERTED_Pin
 #define __SER_OUT_RESET SER_OUT_INVERTED_GPIO_Port->BRR = (uint32_t)SER_OUT_INVERTED_Pin
-
-void transmit_zero(){
-  __SER_OUT_RESET;
-  wait_0h();
-  __SER_OUT_SET;
-  wait_0l();
-}
-
-void transmit_one(){
-  __SER_OUT_RESET;
-  wait_1h();
-  __SER_OUT_SET;
-  wait_1l();
-}
-void transmit_reset(){
-  __SER_OUT_SET;
-  wait_reset();
-  __SER_OUT_RESET;
-}
 
 void checkButtons(){
 	uint8_t buttons = 0;
@@ -391,6 +425,27 @@ void checkButtons(){
 	if (HAL_GPIO_ReadPin(BUT3_IN_GPIO_Port, BUT3_IN_Pin) == GPIO_PIN_RESET){
 		buttons |= 0x04;
 	}
+}
+
+/* @dma3 */
+
+static void MX_LL_DMA_Init(void){
+  dma_set_pins.PeriphOrM2MSrcAddress = (uint32_t) &gpio_port_high;
+  dma_set_pins.MemoryOrM2MDstAddress = (uint32_t) &GPIOB->ODR;
+  dma_set_pins.Direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH;
+  dma_set_pins.Mode = LL_DMA_MODE_NORMAL;
+  dma_set_pins.PeriphOrM2MSrcIncMode = LL_DMA_MEMORY_NOINCREMENT;
+  dma_set_pins.MemoryOrM2MDstIncMode = LL_DMA_PERIPH_NOINCREMENT;
+  dma_set_pins.PeriphOrM2MSrcDataSize = LL_DMA_MDATAALIGN_BYTE;
+  dma_set_pins.MemoryOrM2MDstDataSize = LL_DMA_PDATAALIGN_WORD;
+  dma_set_pins.NbData = 600;
+  //dma_set_pins.PeriphRequest = LL_DMA_REQUEST_2;
+  dma_set_pins.Priority = LL_DMA_PRIORITY_LOW;
+
+  dma_reset_pins;
+
+  dma_set_memory;
+
 }
 
 /* USER CODE END 4 */
