@@ -62,8 +62,8 @@ LL_DMA_InitTypeDef dma_set_memory;
 /* Private variables ---------------------------------------------------------*/
 uint8_t grb_array_size = 1;
 uint8_t max_power = 0x08;
-uint16_t gpio_port_high = 0xFFFF;
-uint16_t gpio_port_low = 0x0000;
+uint8_t gpio_port_high = 0xFF;
+uint8_t gpio_port_low = 0x00;
 
 struct PIXEL {
   uint8_t green[8];
@@ -306,6 +306,7 @@ static void MX_TIM3_Init(void)
     _Error_Handler(__FILE__, __LINE__);
   }
 
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 35;
   if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
@@ -442,9 +443,29 @@ static void MX_LL_DMA_Init(void){
   //dma_set_pins.PeriphRequest = LL_DMA_REQUEST_2;
   dma_set_pins.Priority = LL_DMA_PRIORITY_LOW;
 
-  dma_reset_pins;
+  dma_reset_pins.PeriphOrM2MSrcAddress = (uint32_t) &gpio_port_low;
+  dma_reset_pins.MemoryOrM2MDstAddress = (uint32_t) &GPIOB->ODR;
+  dma_reset_pins.Direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH;
+  dma_reset_pins.Mode = LL_DMA_MODE_NORMAL;
+  dma_reset_pins.PeriphOrM2MSrcIncMode = LL_DMA_MEMORY_NOINCREMENT;
+  dma_reset_pins.MemoryOrM2MDstIncMode = LL_DMA_PERIPH_NOINCREMENT;
+  dma_reset_pins.PeriphOrM2MSrcDataSize = LL_DMA_MDATAALIGN_BYTE;
+  dma_reset_pins.MemoryOrM2MDstDataSize = LL_DMA_PDATAALIGN_WORD;
+  dma_reset_pins.NbData = 600;
+  //dma_reset_pins.PeriphRequest = LL_DMA_REQUEST_2;
+  dma_reset_pins.Priority = LL_DMA_PRIORITY_LOW;
 
-  dma_set_memory;
+  dma_set_memory.PeriphOrM2MSrcAddress = (uint32_t) grb_array;
+  dma_set_memory.MemoryOrM2MDstAddress = (uint32_t) &GPIOB->ODR;
+  dma_set_memory.Direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH;
+  dma_set_memory.Mode = LL_DMA_MODE_NORMAL;
+  dma_set_memory.PeriphOrM2MSrcIncMode = LL_DMA_MEMORY_INCREMENT;
+  dma_set_memory.MemoryOrM2MDstIncMode = LL_DMA_PERIPH_NOINCREMENT;
+  dma_set_memory.PeriphOrM2MSrcDataSize = LL_DMA_MDATAALIGN_BYTE;
+  dma_set_memory.MemoryOrM2MDstDataSize = LL_DMA_PDATAALIGN_WORD;
+  dma_set_memory.NbData = 600;
+  //dma_set_memory.PeriphRequest = LL_DMA_REQUEST_2;
+  dma_set_memory.Priority = LL_DMA_PRIORITY_LOW;
 
 }
 
