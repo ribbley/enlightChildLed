@@ -52,6 +52,9 @@ ADC_HandleTypeDef hadc;
 DMA_HandleTypeDef hdma_adc;
 
 TIM_HandleTypeDef htim3;
+DMA_HandleTypeDef hdma_tim3_ch3;
+DMA_HandleTypeDef hdma_tim3_ch4_up;
+DMA_HandleTypeDef hdma_tim3_ch1_trig;
 
 /* USER CODE BEGIN PV */
 //DMA handler
@@ -60,6 +63,8 @@ LL_DMA_InitTypeDef dma_reset_pins;
 LL_DMA_InitTypeDef dma_set_memory;
 
 /* Private variables ---------------------------------------------------------*/
+#define LED_COUNT 25
+
 uint8_t grb_array_size = 1;
 uint8_t max_power = 0x08;
 uint8_t gpio_port_high = 0xFF;
@@ -71,7 +76,7 @@ struct PIXEL {
   uint8_t blue[8];
 };
 
-struct PIXEL grb_array[25]; //600 Byte RAM
+struct PIXEL grb_array[LED_COUNT]; //600 Byte RAM
 
 /* USER CODE END PV */
 
@@ -81,7 +86,6 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_ADC_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_LL_DMA_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -127,13 +131,31 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
+
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_ADC_Init();
   MX_TIM3_Init();
-  MX_LL_DMA_Init();
 
   /* USER CODE BEGIN 2 */
+  //@init
+  memset(grb_array, 0xFF, sizeof(struct PIXEL) * LED_COUNT);
+  setPixel(2, 2, 0, 0, 10);
+
+  HAL_DMA_Start_IT(&hdma_tim3_ch1_trig, (uint32_t) &gpio_port_high, (uint32_t) &GPIOB->ODR, LED_COUNT * sizeof(struct PIXEL));
+  HAL_DMA_Start_IT(&hdma_tim3_ch3, (uint32_t) grb_array, (uint32_t) &GPIOB->ODR, LED_COUNT * sizeof(struct PIXEL));
+  HAL_DMA_Start_IT(&hdma_tim3_ch4_up, (uint32_t) &gpio_port_low, (uint32_t) &GPIOB->ODR, LED_COUNT * sizeof(struct PIXEL));
+
+  __HAL_TIM_ENABLE_DMA(&htim3, TIM_DMA_ID_CC3);
+  __HAL_TIM_ENABLE_DMA(&htim3, TIM_DMA_ID_UPDATE);
+  __HAL_TIM_ENABLE_DMA(&htim3, TIM_DMA_ID_CC1);
+
+  HAL_TIM_OC_Start(&htim3, TIM_CHANNEL_3);
+  //HAL_TIM_OC_Start(&htim3, TIM_CHANNEL_1);
+  HAL_TIM_OC_Start(&htim3, TIM_CHANNEL_4);
+
+  __HAL_TIM_ENABLE(&htim3);
+  
 
   /* USER CODE END 2 */
 
@@ -141,21 +163,23 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   uint32_t times = 0;
   uint32_t last_update = 0;
-  memset(&grb_array, 0, sizeof(struct PIXEL) * 25);
 
   //setRow(2, 0, 0, max_power);
 
   while (1)
   {
-
-
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
+    //@while
 
     if(HAL_GetTick() > last_update + 1){
       last_update = HAL_GetTick();
       times++;
+
+      if (times%20 == 0){
+        HAL_GPIO_TogglePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin);
+      }
     }
   }
   /* USER CODE END 3 */
@@ -280,11 +304,12 @@ static void MX_TIM3_Init(void)
   TIM_OC_InitTypeDef sConfigOC;
 
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 1;
+  htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 60;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  //htim3.Init.RepetitionCounter = LED_COUNT * sizeof(struct PIXEL);
   if (HAL_TIM_OC_Init(&htim3) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -306,9 +331,14 @@ static void MX_TIM3_Init(void)
     _Error_Handler(__FILE__, __LINE__);
   }
 
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 35;
-  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sConfigOC.Pulse = 0;
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -327,6 +357,12 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMA1_Channel2_3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
+  /* DMA1_Channel4_5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel4_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel4_5_IRQn);
 
 }
 
@@ -367,15 +403,16 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+/* set values need to be inverted, because pin is connected to NPN base. */
 void setPixel(uint8_t x, uint8_t y, uint8_t green, uint8_t red, uint8_t blue){
   for (uint8_t i = 0; i < 8; i++){
-    grb_array[x + (5 * y)].green[i] = (green & (0x80 >> i))?gpio_port_high:gpio_port_low;
+    grb_array[x + (5 * y)].green[i] = (green & (0x80 >> i))?gpio_port_low:gpio_port_high;
   }
   for (uint8_t i = 0; i < 8; i++){
-    grb_array[x + (5 * y)].red[i] = (red & (0x80 >> i))?gpio_port_high:gpio_port_low;
+    grb_array[x + (5 * y)].red[i] = (red & (0x80 >> i))?gpio_port_low:gpio_port_high;
   }
   for (uint8_t i = 0; i < 8; i++){
-    grb_array[x + (5 * y)].blue[i] = (blue & (0x80 >> i))?gpio_port_high:gpio_port_low;
+    grb_array[x + (5 * y)].blue[i] = (blue & (0x80 >> i))?gpio_port_low:gpio_port_high;
   }
 }
 
@@ -426,47 +463,6 @@ void checkButtons(){
 	if (HAL_GPIO_ReadPin(BUT3_IN_GPIO_Port, BUT3_IN_Pin) == GPIO_PIN_RESET){
 		buttons |= 0x04;
 	}
-}
-
-/* @dma3 */
-
-static void MX_LL_DMA_Init(void){
-  dma_set_pins.PeriphOrM2MSrcAddress = (uint32_t) &gpio_port_high;
-  dma_set_pins.MemoryOrM2MDstAddress = (uint32_t) &GPIOB->ODR;
-  dma_set_pins.Direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH;
-  dma_set_pins.Mode = LL_DMA_MODE_NORMAL;
-  dma_set_pins.PeriphOrM2MSrcIncMode = LL_DMA_MEMORY_NOINCREMENT;
-  dma_set_pins.MemoryOrM2MDstIncMode = LL_DMA_PERIPH_NOINCREMENT;
-  dma_set_pins.PeriphOrM2MSrcDataSize = LL_DMA_MDATAALIGN_BYTE;
-  dma_set_pins.MemoryOrM2MDstDataSize = LL_DMA_PDATAALIGN_WORD;
-  dma_set_pins.NbData = 600;
-  //dma_set_pins.PeriphRequest = LL_DMA_REQUEST_2;
-  dma_set_pins.Priority = LL_DMA_PRIORITY_LOW;
-
-  dma_reset_pins.PeriphOrM2MSrcAddress = (uint32_t) &gpio_port_low;
-  dma_reset_pins.MemoryOrM2MDstAddress = (uint32_t) &GPIOB->ODR;
-  dma_reset_pins.Direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH;
-  dma_reset_pins.Mode = LL_DMA_MODE_NORMAL;
-  dma_reset_pins.PeriphOrM2MSrcIncMode = LL_DMA_MEMORY_NOINCREMENT;
-  dma_reset_pins.MemoryOrM2MDstIncMode = LL_DMA_PERIPH_NOINCREMENT;
-  dma_reset_pins.PeriphOrM2MSrcDataSize = LL_DMA_MDATAALIGN_BYTE;
-  dma_reset_pins.MemoryOrM2MDstDataSize = LL_DMA_PDATAALIGN_WORD;
-  dma_reset_pins.NbData = 600;
-  //dma_reset_pins.PeriphRequest = LL_DMA_REQUEST_2;
-  dma_reset_pins.Priority = LL_DMA_PRIORITY_LOW;
-
-  dma_set_memory.PeriphOrM2MSrcAddress = (uint32_t) grb_array;
-  dma_set_memory.MemoryOrM2MDstAddress = (uint32_t) &GPIOB->ODR;
-  dma_set_memory.Direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH;
-  dma_set_memory.Mode = LL_DMA_MODE_NORMAL;
-  dma_set_memory.PeriphOrM2MSrcIncMode = LL_DMA_MEMORY_INCREMENT;
-  dma_set_memory.MemoryOrM2MDstIncMode = LL_DMA_PERIPH_NOINCREMENT;
-  dma_set_memory.PeriphOrM2MSrcDataSize = LL_DMA_MDATAALIGN_BYTE;
-  dma_set_memory.MemoryOrM2MDstDataSize = LL_DMA_PDATAALIGN_WORD;
-  dma_set_memory.NbData = 600;
-  //dma_set_memory.PeriphRequest = LL_DMA_REQUEST_2;
-  dma_set_memory.Priority = LL_DMA_PRIORITY_LOW;
-
 }
 
 /* USER CODE END 4 */

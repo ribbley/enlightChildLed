@@ -1,12 +1,12 @@
 /**
   ******************************************************************************
   * File Name          : stm32f0xx_hal_msp.c
-  * Description        : This file provides code for the MSP Initialization 
+  * Description        : This file provides code for the MSP Initialization
   *                      and de-Initialization codes.
   ******************************************************************************
   ** This notice applies to any and all portions of this file
   * that are not between comment pairs USER CODE BEGIN and
-  * USER CODE END. Other portions of this file, whether 
+  * USER CODE END. Other portions of this file, whether
   * inserted by the user or by software development tools
   * are owned by their respective copyright owners.
   *
@@ -40,6 +40,12 @@
 #include "stm32f0xx_hal.h"
 
 extern DMA_HandleTypeDef hdma_adc;
+
+extern DMA_HandleTypeDef hdma_tim3_ch3;
+
+extern DMA_HandleTypeDef hdma_tim3_ch4_up;
+
+extern DMA_HandleTypeDef hdma_tim3_ch1_trig;
 
 extern void _Error_Handler(char *, int);
 /* USER CODE BEGIN 0 */
@@ -80,12 +86,12 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
   /* USER CODE END ADC1_MspInit 0 */
     /* Peripheral clock enable */
     __HAL_RCC_ADC1_CLK_ENABLE();
-  
-    /**ADC GPIO Configuration    
+
+    /**ADC GPIO Configuration
     PA0     ------> ADC_IN0
     PA1     ------> ADC_IN1
     PA2     ------> ADC_IN2
-    PA3     ------> ADC_IN3 
+    PA3     ------> ADC_IN3
     */
     GPIO_InitStruct.Pin = RED_ANALOG_Pin|GREEN_ANALOG_Pin|BLUE_ANALOG_Pin|VCC_SENSE_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
@@ -126,12 +132,12 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* hadc)
   /* USER CODE END ADC1_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_ADC1_CLK_DISABLE();
-  
-    /**ADC GPIO Configuration    
+
+    /**ADC GPIO Configuration
     PA0     ------> ADC_IN0
     PA1     ------> ADC_IN1
     PA2     ------> ADC_IN2
-    PA3     ------> ADC_IN3 
+    PA3     ------> ADC_IN3
     */
     HAL_GPIO_DeInit(GPIOA, RED_ANALOG_Pin|GREEN_ANALOG_Pin|BLUE_ANALOG_Pin|VCC_SENSE_Pin);
 
@@ -154,6 +160,58 @@ void HAL_TIM_OC_MspInit(TIM_HandleTypeDef* htim_oc)
   /* USER CODE END TIM3_MspInit 0 */
     /* Peripheral clock enable */
     __HAL_RCC_TIM3_CLK_ENABLE();
+
+    /* TIM3 DMA Init */
+    /* TIM3_CH3 Init */
+    hdma_tim3_ch3.Instance = DMA1_Channel2;
+    hdma_tim3_ch3.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_tim3_ch3.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_tim3_ch3.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_tim3_ch3.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_tim3_ch3.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_tim3_ch3.Init.Mode = DMA_NORMAL;
+    hdma_tim3_ch3.Init.Priority = DMA_PRIORITY_HIGH;
+    if (HAL_DMA_Init(&hdma_tim3_ch3) != HAL_OK)
+    {
+      _Error_Handler(__FILE__, __LINE__);
+    }
+
+    __HAL_LINKDMA(htim_oc,hdma[TIM_DMA_ID_CC3],hdma_tim3_ch3);
+
+    /* TIM3_CH4_UP Init */
+    hdma_tim3_ch4_up.Instance = DMA1_Channel3;
+    hdma_tim3_ch4_up.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_tim3_ch4_up.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_tim3_ch4_up.Init.MemInc = DMA_MINC_DISABLE;
+    hdma_tim3_ch4_up.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_tim3_ch4_up.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_tim3_ch4_up.Init.Mode = DMA_NORMAL;
+    hdma_tim3_ch4_up.Init.Priority = DMA_PRIORITY_HIGH;
+    if (HAL_DMA_Init(&hdma_tim3_ch4_up) != HAL_OK)
+    {
+      _Error_Handler(__FILE__, __LINE__);
+    }
+
+    //let UPDATE_EVENT trigger a DMA REQUEST
+    __HAL_LINKDMA(htim_oc,hdma[TIM_DMA_ID_UPDATE],hdma_tim3_ch4_up);
+
+    /* TIM3_CH1_TRIG Init */
+    hdma_tim3_ch1_trig.Instance = DMA1_Channel4;
+    hdma_tim3_ch1_trig.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_tim3_ch1_trig.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_tim3_ch1_trig.Init.MemInc = DMA_MINC_DISABLE;
+    hdma_tim3_ch1_trig.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_tim3_ch1_trig.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_tim3_ch1_trig.Init.Mode = DMA_NORMAL;
+    hdma_tim3_ch1_trig.Init.Priority = DMA_PRIORITY_HIGH;
+    if (HAL_DMA_Init(&hdma_tim3_ch1_trig) != HAL_OK)
+    {
+      _Error_Handler(__FILE__, __LINE__);
+    }
+
+    //let CH1 Compare Output trigger a DMA REQUEST
+    __HAL_LINKDMA(htim_oc,hdma[TIM_DMA_ID_CC1],hdma_tim3_ch1_trig);
+
     /* TIM3 interrupt Init */
     HAL_NVIC_SetPriority(TIM3_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(TIM3_IRQn);
@@ -174,6 +232,13 @@ void HAL_TIM_OC_MspDeInit(TIM_HandleTypeDef* htim_oc)
   /* USER CODE END TIM3_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_TIM3_CLK_DISABLE();
+
+    /* TIM3 DMA DeInit */
+    HAL_DMA_DeInit(htim_oc->hdma[TIM_DMA_ID_CC3]);
+    HAL_DMA_DeInit(htim_oc->hdma[TIM_DMA_ID_CC4]);
+    HAL_DMA_DeInit(htim_oc->hdma[TIM_DMA_ID_UPDATE]);
+    HAL_DMA_DeInit(htim_oc->hdma[TIM_DMA_ID_CC1]);
+    HAL_DMA_DeInit(htim_oc->hdma[TIM_DMA_ID_TRIGGER]);
 
     /* TIM3 interrupt DeInit */
     HAL_NVIC_DisableIRQ(TIM3_IRQn);
