@@ -49,18 +49,26 @@
 ADC_HandleTypeDef hadc;
 DMA_HandleTypeDef hdma_adc;
 
+TIM_HandleTypeDef htim3;
+DMA_HandleTypeDef hdma_tim3_ch4_up;
+
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+#define LED_COUNT 25
 uint8_t grb_array_size = 1;
 uint8_t max_power = 0x08;
+uint8_t zero_pwm = 35;
+uint8_t one_pwm = 50;
 
 struct PIXEL {
-  uint8_t green;
-  uint8_t red;
-  uint8_t blue;
+  uint8_t green[8];
+  uint8_t red[8];
+  uint8_t blue[8];
 };
 
-struct PIXEL grb_array[25];
+uint16_t rgb_potentiometer[3] = {0, 0, 0};
+
+struct PIXEL grb_array[LED_COUNT];
 
 /* USER CODE END PV */
 
@@ -69,14 +77,13 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_ADC_Init(void);
+static void MX_TIM3_Init(void);
+
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
-extern void wait_0h();
-extern void wait_0l();
-extern void wait_1h();
-extern void wait_1l();
-extern void wait_reset();
 
 void checkButtons();
 void updateColors();
@@ -84,10 +91,6 @@ void setPixel(uint8_t x, uint8_t y, uint8_t green, uint8_t red, uint8_t blue);
 void setColumn(uint8_t column, uint8_t green, uint8_t red, uint8_t blue);
 void setRow(uint8_t row, uint8_t green, uint8_t red, uint8_t blue);
 void setAll(uint8_t green, uint8_t red, uint8_t blue);
-
-void transmit_zero();
-void transmit_one();
-void transmit_reset();
 
 /* USER CODE END PFP */
 
@@ -99,7 +102,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+  //@init
   /* USER CODE END 1 */
 
   /* MCU Configuration----------------------------------------------------------*/
@@ -120,25 +123,25 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
   MX_ADC_Init();
+  MX_DMA_Init();
+  MX_TIM3_Init();
 
   /* USER CODE BEGIN 2 */
+  uint32_t times = 0;
+  uint32_t last_update = 0;
+  memset(&grb_array, zero_pwm, sizeof(struct PIXEL) * LED_COUNT);
+  HAL_Delay(5);
+  HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_4, &grb_array, sizeof(struct PIXEL) * 3);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint32_t times = 0;
-  memset(&grb_array, 0, sizeof(struct PIXEL) * 25);
-
-  //setRow(2, 0, 0, max_power);
 
   while (1)
   {
-    transmit_zero();
-    transmit_zero();
-
+    //@while
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
@@ -146,6 +149,26 @@ int main(void)
   }
   /* USER CODE END 3 */
 
+}
+
+void pinGPIO(){
+  GPIO_InitTypeDef GPIO_InitStruct;
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  //GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+}
+
+void pinPWM(){
+  GPIO_InitTypeDef GPIO_InitStruct;
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
 /** System Clock Configuration
@@ -258,6 +281,44 @@ static void MX_ADC_Init(void)
 
 }
 
+/* TIM3 init function */
+static void MX_TIM3_Init(void)
+{
+
+  TIM_MasterConfigTypeDef sMasterConfig;
+  TIM_OC_InitTypeDef sConfigOC;
+
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 60;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = zero_pwm;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
+  sConfigOC.OCFastMode = TIM_OCFAST_ENABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  HAL_TIM_MspPostInit(&htim3);
+
+}
+
 /**
   * Enable DMA controller clock
   */
@@ -270,6 +331,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMA1_Channel2_3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
 
 }
 
@@ -290,30 +354,26 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SER_OUT_INVERTED_GPIO_Port, SER_OUT_INVERTED_Pin, GPIO_PIN_RESET);
-
   /*Configure GPIO pins : BUT3_IN_Pin BUT2_IN_Pin BUT1_IN_Pin */
   GPIO_InitStruct.Pin = BUT3_IN_Pin|BUT2_IN_Pin|BUT1_IN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : SER_OUT_INVERTED_Pin */
-  GPIO_InitStruct.Pin = SER_OUT_INVERTED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(SER_OUT_INVERTED_GPIO_Port, &GPIO_InitStruct);
-
 }
 
 /* USER CODE BEGIN 4 */
 
 void setPixel(uint8_t x, uint8_t y, uint8_t green, uint8_t red, uint8_t blue){
-  grb_array[x + (5 * y)].green = green;
-  grb_array[x + (5 * y)].red = red;
-  grb_array[x + (5 * y)].blue = blue;
+  for (uint8_t i = 0; i < 8; i++){
+    grb_array[x + (5 * y)].green[i] = (green & (0x80 >> i))?one_pwm:zero_pwm;
+  }
+  for (uint8_t i = 0; i < 8; i++){
+    grb_array[x + (5 * y)].red[i] = (red & (0x80 >> i))?one_pwm:zero_pwm;
+  }
+  for (uint8_t i = 0; i < 8; i++){
+    grb_array[x + (5 * y)].blue[i] = (blue & (0x80 >> i))?one_pwm:zero_pwm;
+  }
 }
 
 void setColumn(uint8_t column, uint8_t green, uint8_t red, uint8_t blue){
@@ -341,43 +401,7 @@ void setAll(uint8_t green, uint8_t red, uint8_t blue){
 }
 
 void updateColors(){
-  transmit_reset();
 
-  for (uint8_t j = 0; j < grb_array_size; j++){
-    for (uint8_t i  = 24; i > 0 ; i--){
-      uint32_t tmp = (grb_array[j].green << 16) | (grb_array[j].red << 8) | grb_array[j].blue;
-      (tmp & (1 << (i-1)))?transmit_one():transmit_zero();
-    }
-  }
-  transmit_reset();
-  HAL_Delay(1);
-}
-
-/*
- * SER_OUT_INVERTED_GPIO_Port->BSRR = (uint32_t)SER_OUT_INVERTED_Pin;
- * SER_OUT_INVERTED_GPIO_Port->BRR = (uint32_t)SER_OUT_INVERTED_Pin;
- */
-
-#define __SER_OUT_SET SER_OUT_INVERTED_GPIO_Port->BSRR = (uint32_t)SER_OUT_INVERTED_Pin
-#define __SER_OUT_RESET SER_OUT_INVERTED_GPIO_Port->BRR = (uint32_t)SER_OUT_INVERTED_Pin
-
-void transmit_zero(){
-  __SER_OUT_RESET;
-  wait_0h();
-  __SER_OUT_SET;
-  wait_0l();
-}
-
-void transmit_one(){
-  __SER_OUT_RESET;
-  wait_1h();
-  __SER_OUT_SET;
-  wait_1l();
-}
-void transmit_reset(){
-  __SER_OUT_SET;
-  wait_reset();
-  __SER_OUT_RESET;
 }
 
 void checkButtons(){

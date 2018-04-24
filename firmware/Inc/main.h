@@ -60,8 +60,6 @@
 #define VCC_SENSE_GPIO_Port GPIOA
 #define BUT3_IN_Pin GPIO_PIN_7
 #define BUT3_IN_GPIO_Port GPIOA
-#define SER_OUT_INVERTED_Pin GPIO_PIN_1
-#define SER_OUT_INVERTED_GPIO_Port GPIOB
 #define BUT2_IN_Pin GPIO_PIN_9
 #define BUT2_IN_GPIO_Port GPIOA
 #define BUT1_IN_Pin GPIO_PIN_10
