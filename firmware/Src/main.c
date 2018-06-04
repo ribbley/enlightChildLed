@@ -49,21 +49,14 @@
 ADC_HandleTypeDef hadc;
 DMA_HandleTypeDef hdma_adc;
 
-TIM_HandleTypeDef htim3;
-DMA_HandleTypeDef hdma_tim3_ch4_up;
+SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 #define LED_COUNT 25
-uint8_t grb_array_size = 1;
-uint8_t max_power = 0x08;
-uint8_t zero_pwm = 35;
-uint8_t one_pwm = 50;
 
 struct PIXEL {
-  uint8_t green[8];
-  uint8_t red[8];
-  uint8_t blue[8];
+  uint8_t data[9];
 };
 
 uint16_t rgb_potentiometer[3] = {0, 0, 0};
@@ -77,20 +70,17 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_ADC_Init(void);
-static void MX_TIM3_Init(void);
-
-void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
-
+static void MX_SPI1_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
 
 void checkButtons();
 void updateColors();
-void setPixel(uint8_t x, uint8_t y, uint8_t green, uint8_t red, uint8_t blue);
-void setColumn(uint8_t column, uint8_t green, uint8_t red, uint8_t blue);
-void setRow(uint8_t row, uint8_t green, uint8_t red, uint8_t blue);
-void setAll(uint8_t green, uint8_t red, uint8_t blue);
+void setPixel(uint8_t x, uint8_t y, uint8_t red, uint8_t green, uint8_t blue);
+void setColumn(uint8_t column, uint8_t red, uint8_t green, uint8_t blue);
+void setRow(uint8_t row, uint8_t red, uint8_t green, uint8_t blue);
+void setAll(uint8_t red, uint8_t green, uint8_t blue);
 
 /* USER CODE END PFP */
 
@@ -123,16 +113,18 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_ADC_Init();
   MX_DMA_Init();
-  MX_TIM3_Init();
+  MX_ADC_Init();
+  MX_SPI1_Init();
 
   /* USER CODE BEGIN 2 */
-  uint32_t times = 0;
-  uint32_t last_update = 0;
-  memset(&grb_array, zero_pwm, sizeof(struct PIXEL) * LED_COUNT);
-  HAL_Delay(5);
-  HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_4, &grb_array, sizeof(struct PIXEL) * 3);
+
+  //init array
+  for (uint8_t y = 0; y < 5; y++){
+    for (uint8_t x = 0; x < 5; x++){
+      setPixel(x, y, 0, 0, 0);
+    }
+  }
 
   /* USER CODE END 2 */
 
@@ -142,6 +134,8 @@ int main(void)
   while (1)
   {
     //@while
+
+
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
@@ -149,26 +143,6 @@ int main(void)
   }
   /* USER CODE END 3 */
 
-}
-
-void pinGPIO(){
-  GPIO_InitTypeDef GPIO_InitStruct;
-  GPIO_InitStruct.Pin = GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  //GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-}
-
-void pinPWM(){
-  GPIO_InitTypeDef GPIO_InitStruct;
-  GPIO_InitStruct.Pin = GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
 /** System Clock Configuration
@@ -186,7 +160,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSICalibrationValue = 16;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL10;
   RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -281,41 +255,29 @@ static void MX_ADC_Init(void)
 
 }
 
-/* TIM3 init function */
-static void MX_TIM3_Init(void)
+/* SPI1 init function */
+static void MX_SPI1_Init(void)
 {
 
-  TIM_MasterConfigTypeDef sMasterConfig;
-  TIM_OC_InitTypeDef sConfigOC;
-
-  htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 60;
-  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_4BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 7;
+  hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
-
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = zero_pwm;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
-  sConfigOC.OCFastMode = TIM_OCFAST_ENABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -331,9 +293,6 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
-  /* DMA1_Channel2_3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel2_3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
 
 }
 
@@ -352,52 +311,90 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /*Configure GPIO pins : BUT3_IN_Pin BUT2_IN_Pin BUT1_IN_Pin */
-  GPIO_InitStruct.Pin = BUT3_IN_Pin|BUT2_IN_Pin|BUT1_IN_Pin;
+  /*Configure GPIO pins : BUT2_IN_Pin BUT1_IN_Pin */
+  GPIO_InitStruct.Pin = BUT2_IN_Pin|BUT1_IN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  GPIO_InitStruct.Pin = GPIO_PIN_1; //old serial pin
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
 /* USER CODE BEGIN 4 */
 
-void setPixel(uint8_t x, uint8_t y, uint8_t green, uint8_t red, uint8_t blue){
-  for (uint8_t i = 0; i < 8; i++){
-    grb_array[x + (5 * y)].green[i] = (green & (0x80 >> i))?one_pwm:zero_pwm;
-  }
-  for (uint8_t i = 0; i < 8; i++){
-    grb_array[x + (5 * y)].red[i] = (red & (0x80 >> i))?one_pwm:zero_pwm;
-  }
-  for (uint8_t i = 0; i < 8; i++){
-    grb_array[x + (5 * y)].blue[i] = (blue & (0x80 >> i))?one_pwm:zero_pwm;
+/* Trying to understand this function is a bit tedious.
+ * In this function, an array will be prepared for SPI transmission.
+ * For every set bit, 110 (binary) will be written to the array, for each
+ * reset bit, 100 (binary). This function handles all the offset and shifting
+ * management to accomplish this successfully on a uint8_t array
+ */
+void setPixel(uint8_t x, uint8_t y, uint8_t red, uint8_t green, uint8_t blue){
+  //nullify, so we can use xor to set pins
+  memset(&grb_array[x + (5 * y)], 0, sizeof(struct PIXEL));
+  uint8_t offset = 0;
+  int8_t bit_shift_offset = 5;
+  uint8_t color_array[3];
+  color_array[0] = green;
+  color_array[1] = red;
+  color_array[2] = blue;
+
+  for (uint8_t j = 0; j < 3; j++){
+    for (uint8_t i = 0; i < 8; i++){
+      //if we have negative value bit_shift_offset, we need to adjust this.
+      if (bit_shift_offset < 0){
+        uint8_t tmp = -bit_shift_offset;
+        if (color_array[j] & (1 << (7-i))){
+          //add upto 2 bits to fill up byte
+          grb_array[x + (5 * y)].data[offset] |= (uint8_t) ((0b110)) >> tmp;
+        }else{
+          //add upto 2 bits to fill up byte
+          grb_array[x + (5 * y)].data[offset] |= (uint8_t) ((0b100)) >> tmp;
+        }
+        bit_shift_offset = 8+bit_shift_offset;
+        offset++;
+      }
+
+      if (color_array[j] & (1 << (7-i))){
+        //add 110
+        //uint8_t cast is important, bit_shift_offset can be > 5!
+        grb_array[x + (5 * y)].data[offset] |= (uint8_t) ((0b110) << bit_shift_offset);
+      }else{
+        //add 100
+        //uint8_t cast is important, bit_shift_offset can be > 5!
+        grb_array[x + (5 * y)].data[offset] |= (uint8_t) ((0b100) << bit_shift_offset);
+      }
+
+      bit_shift_offset -= 3;
+    }
   }
 }
 
-void setColumn(uint8_t column, uint8_t green, uint8_t red, uint8_t blue){
-  setPixel(column, 0, green, red, blue);
-  setPixel(column, 1, green, red, blue);
-  setPixel(column, 2, green, red, blue);
-  setPixel(column, 3, green, red, blue);
-  setPixel(column, 4, green, red, blue);
+void setColumn(uint8_t column, uint8_t red, uint8_t green, uint8_t blue){
+  setPixel(column, 0, red, green, blue);
+  setPixel(column, 1, red, green, blue);
+  setPixel(column, 2, red, green, blue);
+  setPixel(column, 3, red, green, blue);
+  setPixel(column, 4, red, green, blue);
 }
 
-void setRow(uint8_t row, uint8_t green, uint8_t red, uint8_t blue){
-  setPixel(0, row, green, red, blue);
-  setPixel(1, row, green, red, blue);
-  setPixel(2, row, green, red, blue);
-  setPixel(3, row, green, red, blue);
-  setPixel(4, row, green, red, blue);
+void setRow(uint8_t row, uint8_t red, uint8_t green, uint8_t blue){
+  setPixel(0, row, red, green, blue);
+  setPixel(1, row, red, green, blue);
+  setPixel(2, row, red, green, blue);
+  setPixel(3, row, red, green, blue);
+  setPixel(4, row, red, green, blue);
 }
 
-void setAll(uint8_t green, uint8_t red, uint8_t blue){
-  setRow(0, green, red, blue);
-  setRow(1, green, red, blue);
-  setRow(2, green, red, blue);
-  setRow(3, green, red, blue);
-  setRow(4, green, red, blue);
+void setAll(uint8_t red, uint8_t green, uint8_t blue){
+  setRow(0, red, green, blue);
+  setRow(1, red, green, blue);
+  setRow(2, red, green, blue);
+  setRow(3, red, green, blue);
+  setRow(4, red, green, blue);
 }
 
 void updateColors(){
@@ -411,9 +408,6 @@ void checkButtons(){
 	}
 	if (HAL_GPIO_ReadPin(BUT2_IN_GPIO_Port, BUT2_IN_Pin) == GPIO_PIN_RESET){
 		buttons |= 0x02;
-	}
-	if (HAL_GPIO_ReadPin(BUT3_IN_GPIO_Port, BUT3_IN_Pin) == GPIO_PIN_RESET){
-		buttons |= 0x04;
 	}
 }
 

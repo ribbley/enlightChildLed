@@ -1,6 +1,8 @@
 /firmware/Src/*.tmp
 /firmware/toolchain_conf.mk
 /firmware/build
+/firmware/.mxproject
+/firmware/mx.scratch
 *.o
 *.d
 *.hex

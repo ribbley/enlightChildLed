@@ -58,8 +58,6 @@
 #define BLUE_ANALOG_GPIO_Port GPIOA
 #define VCC_SENSE_Pin GPIO_PIN_3
 #define VCC_SENSE_GPIO_Port GPIOA
-#define BUT3_IN_Pin GPIO_PIN_7
-#define BUT3_IN_GPIO_Port GPIOA
 #define BUT2_IN_Pin GPIO_PIN_9
 #define BUT2_IN_GPIO_Port GPIOA
 #define BUT1_IN_Pin GPIO_PIN_10
