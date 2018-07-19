@@ -39,6 +39,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f0xx_hal.h"
+#include "stm32f0xx_hal_msp.h"
 
 /* USER CODE BEGIN Includes */
 #include <string.h>
@@ -77,6 +78,8 @@ static void MX_SPI1_Init(void);
 
 void checkButtons();
 void updateColors();
+void testBut3Pin();
+
 void setPixel(uint8_t x, uint8_t y, uint8_t red, uint8_t green, uint8_t blue);
 void setColumn(uint8_t column, uint8_t red, uint8_t green, uint8_t blue);
 void setRow(uint8_t row, uint8_t red, uint8_t green, uint8_t blue);
@@ -116,6 +119,12 @@ int main(void)
   MX_DMA_Init();
   MX_ADC_Init();
   MX_SPI1_Init();
+  SPI_TxDeInit(&hspi1);
+
+  for (uint8_t i = 0; i < 10 ; i++){
+    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_7);
+    HAL_Delay(300);
+  }
 
   /* USER CODE BEGIN 2 */
 
@@ -125,16 +134,26 @@ int main(void)
       setPixel(x, y, 0, 0, 0);
     }
   }
+  updateColors();
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
+#define UPDATE_PERIOD 1000
+
   while (1)
   {
     //@while
+    static uint32_t lastUpdate = 0;
 
+    if ( HAL_GetTick() > (lastUpdate + UPDATE_PERIOD)) {
+      updateColors();
+      checkButtons();
+      testBut3Pin();
+      lastUpdate = HAL_GetTick();
+    }
 
   /* USER CODE END WHILE */
 
@@ -397,8 +416,22 @@ void setAll(uint8_t red, uint8_t green, uint8_t blue){
   setRow(4, red, green, blue);
 }
 
-void updateColors(){
+void testBut3Pin(){
+  SPI_TxDeInit(&hspi1);
 
+  for ( uint8_t i = 0 ; i < 3 ; i++) {
+    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_7);
+    HAL_Delay(1000);
+  }
+}
+
+void updateColors(){
+  //start DMA transfer - let SPI control Pins
+  SPI_TxInit(&hspi1);
+  HAL_SPI_Transmit_DMA(&hspi1, (uint8_t *) grb_array, sizeof(struct PIXEL) * 25);
+  HAL_Delay(2); //FIXME wait till interrupt
+  SPI_TxDeInit(&hspi1);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5 | GPIO_PIN_7, GPIO_PIN_RESET);
 }
 
 void checkButtons(){
