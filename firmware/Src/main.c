@@ -51,18 +51,29 @@ ADC_HandleTypeDef hadc;
 DMA_HandleTypeDef hdma_adc;
 
 SPI_HandleTypeDef hspi1;
+DMA_HandleTypeDef hdma_spi1_tx;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-#define LED_COUNT 25
 
+#define LED_X_COUNT 5
+#define LED_Y_COUNT 5
+#define LED_COUNT 25
 struct PIXEL {
   uint8_t data[9];
 };
-
-uint16_t rgb_potentiometer[3] = {0, 0, 0};
-
 struct PIXEL grb_array[LED_COUNT];
+struct PIXEL temp_grb_array[LED_COUNT];
+
+const uint8_t white [] = {0b11011011, 0b01101101, 0b10110110, 0b11011011, 0b01101101, 0b10110110, 0b11011011, 0b01101101, 0b10110110};
+const uint8_t black [] = {0b10010010, 0b01001001, 0b10100100, 0b10010010, 0b01001001, 0b10100110, 0b10010010, 0b01001001, 0b10100110};
+
+uint16_t adc_array[4] = {0, 0, 0, 0};
+
+uint8_t select_config = 0;
+int8_t selected [] = {0, 0};
+uint8_t saving = 0;
+uint32_t lastInputTime = 0;
 
 /* USER CODE END PV */
 
@@ -76,10 +87,13 @@ static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
 
-void checkButtons();
+void checkButtonsAndSelected();
 void updateColors();
-void testBut3Pin();
+void fetchPotentiometerValues();
+void checkStateAndSetColor();
+int16_t map(int16_t in, int16_t in_min, int16_t in_max, int16_t out_min, int16_t out_max);
 
+void setSelected(uint8_t red, uint8_t green, uint8_t blue);
 void setPixel(uint8_t x, uint8_t y, uint8_t red, uint8_t green, uint8_t blue);
 void setColumn(uint8_t column, uint8_t red, uint8_t green, uint8_t blue);
 void setRow(uint8_t row, uint8_t red, uint8_t green, uint8_t blue);
@@ -121,7 +135,7 @@ int main(void)
   MX_SPI1_Init();
   SPI_TxDeInit(&hspi1);
 
-  for (uint8_t i = 0; i < 10 ; i++){
+  for (uint8_t i = 0; i < 5 ; i++){
     HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_7);
     HAL_Delay(300);
   }
@@ -134,14 +148,16 @@ int main(void)
       setPixel(x, y, 0, 0, 0);
     }
   }
-  updateColors();
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-#define UPDATE_PERIOD 1000
+#define UPDATE_RATE 50
+#define UPDATE_PERIOD (1000 / UPDATE_RATE)
+#define ACTIVE_LEDS 25
+#define MAX_BRIGHTNESS 40
 
   while (1)
   {
@@ -149,9 +165,12 @@ int main(void)
     static uint32_t lastUpdate = 0;
 
     if ( HAL_GetTick() > (lastUpdate + UPDATE_PERIOD)) {
+
+      checkButtonsAndSelected();
+      fetchPotentiometerValues();
+      checkStateAndSetColor();
+
       updateColors();
-      checkButtons();
-      testBut3Pin();
       lastUpdate = HAL_GetTick();
     }
 
@@ -179,7 +198,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSICalibrationValue = 16;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL10;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL11;
   RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -221,13 +240,13 @@ static void MX_ADC_Init(void)
     */
   hadc.Instance = ADC1;
   hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
-  hadc.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc.Init.Resolution = ADC_RESOLUTION_10B;
   hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
   hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc.Init.LowPowerAutoWait = DISABLE;
   hadc.Init.LowPowerAutoPowerOff = DISABLE;
-  hadc.Init.ContinuousConvMode = ENABLE;
+  hadc.Init.ContinuousConvMode = DISABLE;
   hadc.Init.DiscontinuousConvMode = DISABLE;
   hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
@@ -282,7 +301,7 @@ static void MX_SPI1_Init(void)
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_4BIT;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
@@ -292,7 +311,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 7;
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -310,8 +329,8 @@ static void MX_DMA_Init(void)
 
   /* DMA interrupt init */
   /* DMA1_Channel1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  HAL_NVIC_SetPriority(DMA1_Channel2_3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
 
 }
 
@@ -345,6 +364,244 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+#define BLINK_HALF_PERIOD 200
+#define DESELECT_TIME 6000
+#define MINIMAL_CHANGE_COLOR 4
+
+#define STATE_IDLE 0
+#define STATE_BLINK_SELECTED_ON 1
+#define STATE_BLINK_SELECTED_OFF 2
+#define STATE_SETTING_COLOR 3
+
+void checkStateAndSetColor(){
+  static uint8_t state = STATE_IDLE;
+  static uint32_t blinkTime = 0;
+  static uint8_t rgb_buff [] = {0, 0, 0};
+  static uint8_t state_select_config = 0;
+  static uint8_t state_selected [] = {0, 0};
+
+  switch(state){
+    case STATE_IDLE:
+      if (select_config != 0){
+        state = STATE_BLINK_SELECTED_ON;
+        for (uint8_t i = 0; i < 3; i++)
+          rgb_buff[i] = adc_array[i]; //init color compare array
+        memcpy(temp_grb_array, grb_array, sizeof(struct PIXEL) * LED_COUNT);  //copy color array
+        blinkTime = HAL_GetTick();
+      }
+      break;
+
+    case STATE_BLINK_SELECTED_ON:
+
+      if (adc_array[0] - rgb_buff[0] > MINIMAL_CHANGE_COLOR || rgb_buff[0] - adc_array[0] > MINIMAL_CHANGE_COLOR ||
+          adc_array[1] - rgb_buff[1] > MINIMAL_CHANGE_COLOR || rgb_buff[1] - adc_array[1] > MINIMAL_CHANGE_COLOR ||
+          adc_array[2] - rgb_buff[2] > MINIMAL_CHANGE_COLOR || rgb_buff[2] - adc_array[2] > MINIMAL_CHANGE_COLOR){
+        //color has changed!
+        state = STATE_SETTING_COLOR;
+        state_select_config = select_config;
+        memcpy(state_selected, selected, 2);
+        for (uint8_t i = 0; i < 3; i++)
+          rgb_buff[i] = adc_array[i];
+        lastInputTime = HAL_GetTick();
+      }
+
+      if (HAL_GetTick() > lastInputTime + DESELECT_TIME){
+        select_config = 0;
+        state = STATE_IDLE;
+        lastInputTime = HAL_GetTick();
+      }
+
+      if (HAL_GetTick() > blinkTime + BLINK_HALF_PERIOD){
+        state = STATE_BLINK_SELECTED_OFF;
+        setSelected(0, 0, 0);
+        blinkTime = HAL_GetTick();
+      }
+      break;
+
+    case STATE_BLINK_SELECTED_OFF:
+
+      if (adc_array[0] - rgb_buff[0] > MINIMAL_CHANGE_COLOR || rgb_buff[0] - adc_array[0] > MINIMAL_CHANGE_COLOR ||
+          adc_array[1] - rgb_buff[1] > MINIMAL_CHANGE_COLOR || rgb_buff[1] - adc_array[1] > MINIMAL_CHANGE_COLOR ||
+          adc_array[2] - rgb_buff[2] > MINIMAL_CHANGE_COLOR || rgb_buff[2] - adc_array[2] > MINIMAL_CHANGE_COLOR){
+        //color has changed!
+        state = STATE_SETTING_COLOR;
+        state_select_config = select_config;
+        memcpy(state_selected, selected, 2);
+        for (uint8_t i = 0; i < 3; i++)
+          rgb_buff[i] = adc_array[i];
+        lastInputTime = HAL_GetTick();
+      }
+
+      if (HAL_GetTick() > lastInputTime + DESELECT_TIME){
+        select_config = 0;
+        state = STATE_IDLE;
+        lastInputTime = HAL_GetTick();
+      }
+
+      if (HAL_GetTick() > blinkTime + BLINK_HALF_PERIOD){
+        state = STATE_BLINK_SELECTED_ON;
+        setSelected(MAX_BRIGHTNESS, MAX_BRIGHTNESS, MAX_BRIGHTNESS);
+        blinkTime = HAL_GetTick();
+      }
+      break;
+
+    case STATE_SETTING_COLOR:
+      //check if button input was given
+      if ((state_select_config != select_config) || memcmp(state_selected, selected, 2) != 0){
+        state = STATE_BLINK_SELECTED_ON;
+        for (uint8_t i = 0; i < 3; i++)
+          rgb_buff[i] = adc_array[i];
+        break;
+      }
+
+      if (adc_array[0] - rgb_buff[0] > MINIMAL_CHANGE_COLOR || rgb_buff[0] - adc_array[0] > MINIMAL_CHANGE_COLOR ||
+          adc_array[1] - rgb_buff[1] > MINIMAL_CHANGE_COLOR || rgb_buff[1] - adc_array[1] > MINIMAL_CHANGE_COLOR ||
+          adc_array[2] - rgb_buff[2] > MINIMAL_CHANGE_COLOR || rgb_buff[2] - adc_array[2] > MINIMAL_CHANGE_COLOR){
+        //color has changed!
+        state = STATE_SETTING_COLOR;
+        memcpy(rgb_buff, adc_array, 3);
+        lastInputTime = HAL_GetTick();
+      }
+
+      if (HAL_GetTick() > lastInputTime + DESELECT_TIME){
+        select_config = 0;
+        state = STATE_IDLE;
+        lastInputTime = HAL_GetTick();
+        setSelected(MAX_BRIGHTNESS, MAX_BRIGHTNESS, MAX_BRIGHTNESS);
+        break;
+      }
+
+      setSelected(adc_array[0], adc_array[1], adc_array[2]);
+      memcpy(temp_grb_array, grb_array, sizeof(struct PIXEL) * LED_COUNT);
+      break;
+
+    default:
+      break;
+  }
+}
+
+void fetchPotentiometerValues(){
+  for(uint8_t j = 0; j < 4 ; j++){
+    HAL_ADC_Start(&hadc);
+    for (uint8_t i = 0; i < 4; i++){
+      HAL_ADC_PollForConversion(&hadc,5);
+      adc_array[i] += HAL_ADC_GetValue(&hadc);
+    }
+    HAL_ADC_Stop(&hadc);
+  }
+  for (uint8_t i = 0; i < 4; i++){
+    adc_array[i] = adc_array[i] >> 2; // divide by 4 and break down to 8 bit
+    adc_array[i] = map(adc_array[i], 0, 1024, 0, MAX_BRIGHTNESS);
+  }
+}
+
+#define LONG_PRESS_TIME 750
+
+void checkButtonsAndSelected(){
+  static uint32_t timePressed = 0;
+	static uint8_t buttons = 0;
+
+  //check if a button is pressed
+	if (HAL_GPIO_ReadPin(BUT1_IN_GPIO_Port, BUT1_IN_Pin) == GPIO_PIN_RESET && !buttons){
+		buttons = 0x01;  //forward
+    timePressed = HAL_GetTick();
+	}
+	if (HAL_GPIO_ReadPin(BUT2_IN_GPIO_Port, BUT2_IN_Pin) == GPIO_PIN_RESET && !buttons){
+		buttons = 0x02;  //backward
+    timePressed = HAL_GetTick();
+	}
+
+  //check if a button is released
+  if (((HAL_GPIO_ReadPin(BUT1_IN_GPIO_Port, BUT1_IN_Pin) == GPIO_PIN_SET) && (buttons == 0x01)) ||
+      ((HAL_GPIO_ReadPin(BUT2_IN_GPIO_Port, BUT2_IN_Pin) == GPIO_PIN_SET) && (buttons == 0x02))){
+    if (HAL_GetTick() > timePressed + LONG_PRESS_TIME){
+      buttons <<= 4;  //register button press as longpress!
+    }
+
+    if (select_config == 0){
+      select_config = 1;
+    }
+
+    //reset draw array to persistent state
+    memcpy(grb_array, temp_grb_array, sizeof(struct PIXEL) * LED_COUNT);
+
+    switch(buttons){
+      case 0x01:
+        //next
+
+        //special case for row select
+        if (select_config == 2){
+          selected[1]++;
+          if (selected[1] >= LED_Y_COUNT){
+            selected[1] = 0;
+          }
+          break;
+        }
+
+        selected[0]++;
+        if (selected[0] >= LED_X_COUNT){
+          selected[0] = 0;
+          selected[1]++;
+          if (selected[1] >= LED_Y_COUNT){
+            selected[1] = 0;
+          }
+        }
+        break;
+      case 0x02:
+        //save
+        select_config = 0;
+        saving = 1;
+        break;
+
+      case 0x10:
+        //increment select mode
+        select_config++;
+        if (select_config >= 5)
+          select_config = 1;
+        break;
+
+      case 0x20:
+        //decrement select mode
+        select_config--;
+        if (select_config <= 0)
+          select_config = 4;
+        break;
+      default:
+        break;
+    }
+    buttons = 0;
+    lastInputTime = HAL_GetTick();
+  }
+
+}
+
+void setSelected(uint8_t red, uint8_t green, uint8_t blue){
+  switch (select_config) {
+    case 0:
+      break;
+
+    case 1: //normal pixel mode
+      setPixel(selected[0], selected[1], red, green, blue);
+      break;
+
+    case 2: //row mode
+      setRow(selected[1], red, green, blue);
+      break;
+
+    case 3: //column mode
+      setColumn(selected[0], red, green, blue);
+      break;
+
+    case 4: //fill mode
+      setAll(red, green, blue);
+      break;
+
+    default:
+      select_config = 0;
+      break;
+  }
+}
+
 /* Trying to understand this function is a bit tedious.
  * In this function, an array will be prepared for SPI transmission.
  * For every set bit, 110 (binary) will be written to the array, for each
@@ -357,9 +614,9 @@ void setPixel(uint8_t x, uint8_t y, uint8_t red, uint8_t green, uint8_t blue){
   uint8_t offset = 0;
   int8_t bit_shift_offset = 5;
   uint8_t color_array[3];
-  color_array[0] = green;
-  color_array[1] = red;
-  color_array[2] = blue;
+  color_array[0] = green > MAX_BRIGHTNESS ? MAX_BRIGHTNESS : green;
+  color_array[1] = red > MAX_BRIGHTNESS ? MAX_BRIGHTNESS : red;
+  color_array[2] = blue > MAX_BRIGHTNESS ? MAX_BRIGHTNESS : blue;
 
   for (uint8_t j = 0; j < 3; j++){
     for (uint8_t i = 0; i < 8; i++){
@@ -416,32 +673,24 @@ void setAll(uint8_t red, uint8_t green, uint8_t blue){
   setRow(4, red, green, blue);
 }
 
-void testBut3Pin(){
-  SPI_TxDeInit(&hspi1);
-
-  for ( uint8_t i = 0 ; i < 3 ; i++) {
-    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_7);
-    HAL_Delay(1000);
-  }
-}
-
 void updateColors(){
   //start DMA transfer - let SPI control Pins
   SPI_TxInit(&hspi1);
-  HAL_SPI_Transmit_DMA(&hspi1, (uint8_t *) grb_array, sizeof(struct PIXEL) * 25);
-  HAL_Delay(2); //FIXME wait till interrupt
+  //HAL_SPI_Transmit_DMA(&hspi1, (uint8_t *) grb_array, sizeof(struct PIXEL) * 1);
+
+  HAL_SPI_Transmit(&hspi1, (uint8_t *) grb_array, sizeof(struct PIXEL) * ACTIVE_LEDS, 3);
   SPI_TxDeInit(&hspi1);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5 | GPIO_PIN_7, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
+
 }
 
-void checkButtons(){
-	uint8_t buttons = 0;
-	if (HAL_GPIO_ReadPin(BUT1_IN_GPIO_Port, BUT1_IN_Pin == GPIO_PIN_RESET)){
-		buttons |= 0x01;
-	}
-	if (HAL_GPIO_ReadPin(BUT2_IN_GPIO_Port, BUT2_IN_Pin) == GPIO_PIN_RESET){
-		buttons |= 0x02;
-	}
+int16_t map(int16_t in, int16_t in_min, int16_t in_max, int16_t out_min, int16_t out_max){
+  int16_t tmp;
+  tmp = out_min + ((out_max - out_min) * 1.0 / (in_max - in_min)) * (in - in_min);
+  tmp = tmp > MAX_BRIGHTNESS ? MAX_BRIGHTNESS : tmp < 0 ? 0 : tmp;
+  return tmp;
 }
 
 /* USER CODE END 4 */
